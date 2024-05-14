@@ -1,0 +1,53 @@
+#!/usr/bin/env bpftrace
+/*
+ * ivcsw_time.bt
+ */
+
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/sched.h>
+#endif
+
+
+BEGIN
+{
+	// For now, we support <=8 process
+    if ($1) {
+        @process_to_monitoring[$1] = 1;
+    }
+    if ($2) {
+        @process_to_monitoring[$2] = 1;
+    }
+    if ($3) {
+        @process_to_monitoring[$3] = 1;
+    }
+    if ($4) {
+        @process_to_monitoring[$4] = 1;
+    }
+    if ($5) {
+        @process_to_monitoring[$5] = 1;
+    }
+    if ($6) {
+        @process_to_monitoring[$6] = 1;
+    }
+    if ($7) {
+        @process_to_monitoring[$7] = 1;
+    }
+    if ($8) {
+        @process_to_monitoring[$8] = 1;
+    }
+}
+
+kprobe:finish_task_switch
+{
+	$prev = (struct task_struct *)arg0;
+    $prev_pid = $prev->tgid;
+    $prev_tid = $prev->pid;
+    if (@process_to_monitoring[$prev_pid]) {
+        if ($prev->nivcsw) {
+            @nivcsw_normal[kstack(), $prev_pid, $prev_tid] = count();
+        } else {
+            @nivcsw_zero[kstack(), $prev_pid, $prev_tid] = count();
+        }
+    }
+}
+

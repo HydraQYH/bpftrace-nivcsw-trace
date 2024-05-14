@@ -1,0 +1,69 @@
+#!/usr/bin/env bpftrace
+/*
+ * ivcsw_detect.bt
+ */
+
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/sched.h>
+#endif
+
+BEGIN
+{
+    // For now, we support <=8 process
+    if ($1) {
+        @process_to_monitoring[$1] = 1;
+    }
+    if ($2) {
+        @process_to_monitoring[$2] = 1;
+    }
+    if ($3) {
+        @process_to_monitoring[$3] = 1;
+    }
+    if ($4) {
+        @process_to_monitoring[$4] = 1;
+    }
+    if ($5) {
+        @process_to_monitoring[$5] = 1;
+    }
+    if ($6) {
+        @process_to_monitoring[$6] = 1;
+    }
+    if ($7) {
+        @process_to_monitoring[$7] = 1;
+    }
+    if ($8) {
+        @process_to_monitoring[$8] = 1;
+    }
+}
+
+tracepoint:sched:sched_switch
+/@process_to_monitoring[pid]/
+{
+    if (@thread_to_monitoring[pid, tid]) {
+        $last_nivcsw = @thread_nivcsw[pid, tid];
+        $current_nivcsw = curtask->nivcsw;
+        // TODO: Can we assert here?
+        if ($current_nivcsw != $last_nivcsw) {
+            @thread_nivcsw[pid, tid] = $current_nivcsw;
+            if ($current_nivcsw == $last_nivcsw + 1) {
+                printf("Except nivcsw += 1 as: %d == %d + 1\n", $current_nivcsw, $last_nivcsw);
+            } else {
+                printf("Unexcept nivcsw: %d != %d + 1\n", $current_nivcsw, $last_nivcsw);
+            }
+
+            // TODO: Check args->prev_state
+            if (args->prev_state == TASK_RUNNING) {
+                // printf("Except: Thread Prev State is TASK_RUNNING\n");
+                @dequeue_stacks[kstack()] = count();
+            } else {
+                // printf("Unexcept: Thread Prev State is %d\n", args->prev_state);
+                @preempt_stacks[kstack()] = count();
+            }
+        }
+    
+    } else {
+        @thread_to_monitoring[pid, tid] = 1;
+        $current_nivcsw = curtask->nivcsw;
+        @thread_nivcsw[pid, tid] = $current_nivcsw;
+    }
+}

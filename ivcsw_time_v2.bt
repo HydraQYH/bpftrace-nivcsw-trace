@@ -1,0 +1,71 @@
+#!/usr/bin/env bpftrace
+/*
+ * ivcsw_time.bt
+ */
+
+#ifndef BPFTRACE_HAVE_BTF
+#include <linux/sched.h>
+#endif
+
+BEGIN
+{
+    // For now, we support <=8 process
+    if ($1) {
+        @process_to_monitoring[$1] = 1;
+    }
+    if ($2) {
+        @process_to_monitoring[$2] = 1;
+    }
+    if ($3) {
+        @process_to_monitoring[$3] = 1;
+    }
+    if ($4) {
+        @process_to_monitoring[$4] = 1;
+    }
+    if ($5) {
+        @process_to_monitoring[$5] = 1;
+    }
+    if ($6) {
+        @process_to_monitoring[$6] = 1;
+    }
+    if ($7) {
+        @process_to_monitoring[$7] = 1;
+    }
+    if ($8) {
+        @process_to_monitoring[$8] = 1;
+    }
+}
+
+tracepoint:sched:sched_switch
+{
+    if (@process_to_monitoring[pid]) {
+        if (@thread_to_monitoring[pid, tid]) {
+            $last_nivcsw = @thread_nivcsw[pid, tid];
+            $current_nivcsw = curtask->nivcsw;
+            // TODO: Can we assert here?
+            if ($current_nivcsw != $last_nivcsw) {
+                @thread_nivcsw[pid, tid] = $current_nivcsw;
+                // Current thread switch out, record start time
+                // args->prev_pid == tid
+                // tid is bpftrace builtin variable
+                @start[args->prev_pid] = nsecs;
+            }
+        } else {
+            @thread_to_monitoring[pid, tid] = 1;
+            $current_nivcsw = curtask->nivcsw;
+            @thread_nivcsw[pid, tid] = $current_nivcsw;
+        }
+    }
+
+    // Get next thread start time
+    $last = @start[args->next_pid];
+    if ($last != 0) {
+        @[args->next_pid] = hist((nsecs - $last) / 1000);
+        delete(@start[args->next_pid]);
+    }
+}
+
+END
+{
+	clear(@start);
+}
